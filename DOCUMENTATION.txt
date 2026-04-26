@@ -1,0 +1,537 @@
+🪷 VEGA WORKER APP — COMPLETE DOCUMENTATION
+════════════════════════════════════════════════════════
+App Name     : VEGA Professional
+Version      : 2.0
+Platform     : Android + iOS
+Bundle ID    : com.vegavizag.worker
+Theme        : Dark Green
+Firebase     : vega-home-service (same project as all VEGA apps)
+Built        : April 2026 — VEGA Home Services, Visakhapatnam
+════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FILES IN THIS FOLDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App.js           → Complete app code (793 lines)
+package.json     → All dependencies
+app.json         → Expo + Firebase build config
+eas.json         → EAS build profiles (APK + AAB)
+babel.config.js  → Transpiler config
+
+YOU MUST ADD (copy from Customer App folder):
+  google-services.json       → Firebase Android config
+  GoogleService-Info.plist   → Firebase iOS config
+  assets/                    → Icon + splash screen folder
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT THIS APP DOES — COMPLETE FUNCTIONALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHO USES IT:
+  VEGA professionals — cleaners, car washers, etc.
+  Workers are SALARIED EMPLOYEES, not gig workers.
+
+IMPORTANT RULE — HARDCODED IN APP:
+  🚫 NEVER shows job amount / price / earnings to worker
+  🚫 Workers do NOT know what customer paid
+  ✅ Only job details (service type, address, timing)
+
+──────────────────────────────────
+1. AUTHENTICATION
+──────────────────────────────────
+
+✅ DONE — Phone OTP via Firebase Auth
+  - Worker enters their registered mobile number
+  - Real SMS OTP sent by Firebase (requires Blaze plan)
+  - On verification:
+      → Checks Firestore workers collection
+      → If not found: "Access Denied"
+      → If status = "suspended": "Account Suspended. Contact hub manager."
+      → If status = "blocked": "Account Blocked. Contact admin."
+      → If status = "active": Login success
+
+Firestore check:
+  collection: workers
+  query: where phone == entered_number
+  fields checked: status, isAvailable, name, services
+
+FCM token registered on every login for push notifications.
+
+──────────────────────────────────
+2. JOBS TABS
+──────────────────────────────────
+
+✅ DONE — 4 job tabs with real-time Firestore listener:
+
+  📅 TODAY TAB
+    → Shows all jobs assigned to this worker for today
+    → Filters by createdAt date matching today
+    → Badge count on tab icon (unread/pending jobs)
+
+  ⚡ ACTIVE TAB
+    → Shows jobs with status: assigned, on_the_way, in_progress
+    → Badge count shows urgent attention needed
+    → Sorted by createdAt desc
+
+  ✅ COMPLETED TAB
+    → Shows all completed jobs
+    → No pricing shown — just service + customer name + time
+
+  📋 ALL JOBS TAB
+    → Complete history of all assigned jobs
+    → All statuses visible
+
+Each job card shows:
+  - Order ID (last 6 chars)
+  - Customer name
+  - Service type (Home Cleaning, Car Wash, etc.)
+  - Address (first 50 chars)
+  - Scheduled time/slot
+  - Status badge (colored)
+  - Photo upload status (Before: X, After: X)
+  - Delay flag warning if applicable
+  🚫 NO job amount or price
+
+──────────────────────────────────
+3. JOB FLOW — STEP BY STEP
+──────────────────────────────────
+
+✅ DONE — Complete job lifecycle:
+
+STEP 1: ASSIGNED
+  Worker sees job in Today/Active tab
+  Quick action button: "🚀 Start Going"
+  → Updates Firestore:
+      status = "on_the_way"
+      onTheWayAt = server timestamp
+      delayToStart = minutes since assignedAt
+      delayFlag = true if delay > 15 minutes
+
+STEP 2: ON THE WAY
+  Worker taps job card → opens Job Detail screen
+  Shows customer address + navigation button
+  Shows "Enter Customer OTP" section
+
+  BEFORE entering OTP:
+    → Worker MUST upload at least 1 BEFORE photo
+    → If no before photos: "Upload BEFORE photos first"
+    → Upload button opens photo simulation
+      (In production: opens camera/gallery)
+
+  Worker enters 4-digit OTP from customer
+  → Verifies against Firestore job.otp field
+  → Wrong OTP: "Ask customer again"
+  → Correct OTP:
+      status = "in_progress"
+      startedAt = server timestamp
+      otpVerified = true
+      delayToArrive = minutes since onTheWayAt
+      delayFlag = true if delay > 15 minutes
+
+STEP 3: IN PROGRESS
+  Worker performs service
+  Quick action button: "🎉 Mark Job Complete"
+
+  BEFORE completing:
+    → Worker MUST upload at least 1 AFTER photo
+    → If no after photos: "Upload AFTER photos first"
+
+  On completion:
+    → status = "completed"
+    → completedAt = server timestamp
+    → workers/{id} updated:
+        totalJobsCompleted += 1
+        attendance.jobsToday += 1
+        attendance.jobsWeek += 1
+    🚫 NO earnings/payment fields updated
+
+──────────────────────────────────
+4. PHOTO PROOF SYSTEM
+──────────────────────────────────
+
+✅ DONE — Before/After photos mandatory
+
+BEFORE PHOTOS:
+  - Minimum 1, maximum 5
+  - Must upload before OTP verification
+  - Stored in Firestore: jobs/{jobId}.beforePhotos (array of URLs)
+  - Orange section — draws attention to requirement
+
+AFTER PHOTOS:
+  - Minimum 1, maximum 5
+  - Must upload before marking complete
+  - Stored in Firestore: jobs/{jobId}.afterPhotos (array of URLs)
+  - Green section
+
+⚠️ CURRENT STATUS: Photo upload is SIMULATED
+  Uses placeholder URLs from picsum.photos
+  
+❌ WHAT IS NOT DONE (Phase 2 — 1 day work):
+  Real camera/gallery integration needs:
+  npm install expo-image-picker
+  Add to app.json plugins: "expo-image-picker"
+  Replace addPhoto() function with real camera code
+
+  Firebase Storage URL format:
+  jobs/{jobId}/before/photo_0_timestamp.jpg
+  jobs/{jobId}/after/photo_0_timestamp.jpg
+
+──────────────────────────────────
+5. JOB REJECTION
+──────────────────────────────────
+
+✅ DONE — Worker can reject with reasons
+
+Available reasons:
+  - Too far from my location
+  - Not available right now
+  - Health issue
+  - Safety concern
+  - Other (free text)
+
+On rejection:
+  → Firestore update:
+      status = "rejected"
+      rejectedBy = workerId
+      rejectedByName = worker name
+      rejectReason = selected reason text
+      rejectedAt = server timestamp
+      assignedWorkerId = null (unassigned)
+  → Hub Manager notified (via FCM — if server-side setup)
+
+Can reject when status is: assigned, on_the_way
+
+──────────────────────────────────
+6. DELAY TRACKING
+──────────────────────────────────
+
+✅ DONE — Automatic delay detection
+
+Tracked timestamps:
+  - assignedAt (set by hub manager when assigned)
+  - onTheWayAt (set when worker taps "Start Going")
+  - startedAt (set when OTP verified)
+  - completedAt (set when job marked complete)
+
+Delay calculations:
+  delayToStart = minutes from assignedAt to onTheWayAt
+  delayToArrive = minutes from onTheWayAt to startedAt
+
+If any delay > 15 minutes:
+  → delayFlag = true saved in Firestore
+  → "⚠️ Delayed" badge shown on job card
+  → Hub manager sees this flag
+
+──────────────────────────────────
+7. WORK SUMMARY (Not Earnings)
+──────────────────────────────────
+
+✅ DONE — Work Summary tab replaces Earnings
+
+Shows:
+  📅 Completed Today
+  📆 Completed This Week
+  🏆 Total Jobs Done (all time)
+  ⭐ Performance Score (from workers.performanceScore)
+  Attendance (Present/Absent days this month)
+  Rating average (from workers.ratingAvg)
+
+🚫 Does NOT show:
+  Job amounts
+  Earnings
+  Salary
+  Commission
+  Any ₹ values
+
+──────────────────────────────────
+8. PUSH NOTIFICATIONS (FCM)
+──────────────────────────────────
+
+✅ DONE — Receiving notifications
+  - App requests FCM permission on login
+  - Token saved to workers/{id}.fcmToken
+  - Foreground notifications shown as Alert
+
+❌ WHAT IS NOT DONE (Phase 2 — needs backend):
+  Sending notifications requires Firebase Cloud Functions OR
+  a backend server to trigger FCM messages.
+  
+  Current state: App can RECEIVE any notification.
+  Sending needs: Cloud Function triggered on Firestore write.
+  
+  Notifications needed:
+    → New job assigned → notify worker
+    → Booking reminder → notify worker
+    → Delay warning → notify hub manager
+
+──────────────────────────────────
+9. LIVE LOCATION
+──────────────────────────────────
+
+✅ DONE — Location ping infrastructure
+  - Pings Firestore every 30 seconds
+  - Updates workers/{id}.lastLocationAt
+
+❌ WHAT IS NOT DONE (Phase 2 — 1 day work):
+  Real GPS coordinates need:
+  npm install expo-location
+  Add permission to app.json
+  Replace interval with real coords:
+    Location.getCurrentPositionAsync()
+    Save: workers/{id}.liveLocation (GeoPoint)
+
+──────────────────────────────────
+10. PROFILE
+──────────────────────────────────
+
+✅ DONE:
+  - Worker name + phone
+  - Account status badge (active/suspended/blocked)
+  - Rating average + total reviews
+  - Availability toggle (on/off)
+  - Services list (what this worker can do)
+  - VEGA Standards reminder
+  - Logout
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FIRESTORE COLLECTIONS USED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+READS FROM:
+  workers/{phone} → worker profile, status, availability
+  jobs where assignedWorkerId == workerId → my jobs
+
+WRITES TO:
+  jobs/{jobId}:
+    status, onTheWayAt, startedAt, completedAt
+    otpVerified, beforePhotos, afterPhotos
+    delayFlag, delayToStart, delayToArrive
+    rejectedBy, rejectReason, rejectedAt
+
+  workers/{id}:
+    isAvailable, fcmToken, lastLocationAt
+    totalJobsCompleted (increment)
+    attendance.jobsToday (increment)
+    attendance.jobsWeek (increment)
+
+NEVER READS:
+  jobs/{jobId}.amount
+  jobs/{jobId}.total
+  jobs/{jobId}.price
+  Any pricing or revenue field
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SCALABILITY — READY FOR 500+ CUSTOMERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Firebase Firestore scales automatically:
+  → 1 million reads/day free on Spark
+  → Blaze plan: unlimited reads/writes
+  → Auto-scaling: no server management needed
+
+Real-time listeners handle any load:
+  → Firestore onSnapshot is websocket-based
+  → No polling — instant updates
+  → Works for 1 worker or 1000 workers simultaneously
+
+APK distribution:
+  → Share APK directly — no store needed
+  → Same APK works on all Android phones
+  → iOS: TestFlight handles up to 10,000 testers
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO SET UP A WORKER BEFORE THEY LOGIN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Method 1 — Via Admin App or Hub Manager App:
+  Team → Add Worker → fill details
+
+Method 2 — Via Firebase Console directly:
+  Firestore → workers → Add document
+
+Required fields:
+  {
+    id: "worker_9876543210",
+    name: "Lakshmi Devi",
+    phone: "9876543210",
+    role: "worker",
+    status: "active",
+    isAvailable: true,
+    isActive: true,
+    currentArea: "Madhurawada",
+    services: ["Home Cleaning", "Bathroom"],
+    ratingAvg: 4.9,
+    totalReviews: 0,
+    totalJobsCompleted: 0,
+    performanceScore: 85,
+    salary: 12000,
+    attendance: {
+      jobsToday: 0,
+      jobsWeek: 0,
+      daysPresent: 0,
+      daysAbsent: 0
+    }
+  }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO TEST THE APP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TEST 1 — Login
+  1. Install APK on Android phone
+  2. Open app → enter your phone number
+  3. Wait for SMS OTP
+  4. Enter OTP
+  Expected: If number is in workers collection → login success
+  Expected: If number not in workers → "Access Denied"
+
+TEST 2 — Blocked Worker Login
+  1. In Firebase Console, set a worker's status = "suspended"
+  2. Try to login with that number
+  Expected: "Account Suspended" error — cannot login
+
+TEST 3 — Job Flow (end-to-end)
+  Prerequisites:
+    → Customer places a booking (via Customer App)
+    → Hub Manager assigns that booking to this worker
+  
+  1. Login as worker
+  2. Go to Today tab — see the assigned job
+  3. Tap "Start Going" → see status change to "On the Way"
+  4. Check Firebase Console → job.status = "on_the_way" ✅
+  5. Tap job → tap "Before Photos" → add photo
+  6. Enter 4-digit OTP (from customer's app)
+  7. If OTP correct → job starts
+  8. Check Firebase Console → job.status = "in_progress" ✅
+  9. Tap "After Photos" → add photo
+  10. Tap "Mark Job Complete"
+  11. Check Firebase Console → job.status = "completed" ✅
+  12. Check workers collection → totalJobsCompleted increased ✅
+
+TEST 4 — Without Before Photos
+  1. Tap job → reach OTP screen without uploading photos
+  2. Enter correct OTP
+  Expected: "Upload BEFORE photos first" alert — cannot start
+
+TEST 5 — Without After Photos
+  1. Job is in_progress
+  2. Tap "Mark Complete" without after photos
+  Expected: "Upload AFTER photos first" alert — cannot complete
+
+TEST 6 — Reject Job
+  1. Open assigned job
+  2. Scroll to bottom → "Reject This Job"
+  3. Select reason → Confirm
+  Expected: Job status = "rejected" in Firebase Console ✅
+  Expected: Job is removed from worker's list ✅
+
+TEST 7 — Delay Flag
+  1. Assign a job to worker
+  2. Wait 20+ minutes before tapping "Start Going"
+  Expected: delayFlag = true in Firebase Console ✅
+  Expected: "⚠️ Delayed" badge on job card ✅
+
+TEST 8 — Work Summary
+  1. Complete a job
+  2. Go to Summary tab
+  Expected: jobsCompletedToday increases by 1 ✅
+  Expected: NO price or ₹ amounts visible anywhere ✅
+
+TEST 9 — Availability Toggle
+  1. Profile tab → toggle availability OFF
+  Expected: workers/{id}.isAvailable = false in Firebase ✅
+  Expected: Hub Manager sees this worker as "On Job/Unavailable" ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUILD COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Step 1: Create folder on your laptop
+  C:\Users\MaheshPappala\Desktop\My Business\VEGA-Worker-App\
+
+Step 2: Place all files from this folder
+
+Step 3: Copy Firebase files from Customer App:
+  google-services.json
+  GoogleService-Info.plist
+  assets/ folder
+
+Step 4: Open Command Prompt
+  cd "C:\Users\MaheshPappala\Desktop\My Business\VEGA-Worker-App"
+  npm install
+  eas init
+
+Step 5: Build Android APK
+  set EAS_NO_VCS=1 && eas build --platform android --profile preview
+
+Step 6: Build iOS (for TestFlight)
+  set EAS_NO_VCS=1 && eas build --platform ios --profile preview
+
+Step 7: Distribute
+  Android → Share APK link via WhatsApp to workers
+  iOS → Upload to TestFlight → add worker Apple IDs
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT IS DONE ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[✅] Phone OTP login (Firebase Auth)
+[✅] Block suspended/blocked workers at login
+[✅] Today / Active / Completed / All job tabs
+[✅] Real-time job updates (Firestore onSnapshot)
+[✅] "On My Way" status update
+[✅] OTP verification to start service
+[✅] Before photo upload (mandatory, min 1)
+[✅] After photo upload (mandatory, min 1)
+[✅] Cannot start without before photos (enforced)
+[✅] Cannot complete without after photos (enforced)
+[✅] Job rejection with 5 reasons + free text
+[✅] Delay tracking (assignedAt → onTheWay → started)
+[✅] Delay flag if >15 minutes
+[✅] Work Summary tab (jobs done, attendance, performance)
+[✅] NO pricing/earnings anywhere in app
+[✅] FCM token registration
+[✅] FCM foreground notification display
+[✅] Location ping every 30 seconds
+[✅] Availability toggle
+[✅] VEGA service checklist in job detail
+[✅] Call customer button (one tap)
+[✅] Navigate to address (opens Maps app)
+[✅] Logout
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT IS NOT DONE ❌ (Phase 2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[❌] Real camera/gallery for photos
+     → Currently simulated with placeholder URLs
+     → Fix: npm install expo-image-picker (1 day)
+
+[❌] Real GPS coordinates
+     → Currently saves only timestamp (no lat/long)
+     → Fix: npm install expo-location (1 day)
+
+[❌] FCM push notification SENDING
+     → App receives notifications ✅
+     → Sending needs Firebase Cloud Functions backend
+     → Fix: Write Cloud Function on job status change (1-2 days)
+
+[❌] Offline mode
+     → App needs internet connection
+     → Firestore has offline cache built-in (partial)
+     → Full offline: needs additional implementation
+
+[❌] In-app chat with customer
+     → Not built — use phone call for now
+
+[❌] Biometric lock (Face ID / Fingerprint)
+     → Nice to have for security
+     → Fix: expo-local-authentication (half day)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🪷 JAI VEGA | JAI VINAYAKA | JAI KRISHNA | JAI VIZAG 🌊
+
+VEGA HOME SERVICES PRIVATE LIMITED
+Visakhapatnam, Andhra Pradesh — 2026
