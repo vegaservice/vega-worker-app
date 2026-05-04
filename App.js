@@ -109,7 +109,7 @@ export default function App() {
   // Jobs listener
   useEffect(()=>{
     if(!worker) return;
-    const unsub=firestore().collection('jobs')
+    const unsub=firestore().collection('bookings')
       .where('assignedWorkerId','==',worker.id)
       .orderBy('createdAt','desc')
       .onSnapshot(snap=>setMyJobs(snap.docs.map(d=>({id:d.id,...d.data()}))));
@@ -159,7 +159,7 @@ export default function App() {
   // JOB ACTIONS
   const markOnTheWay=async(job)=>{
     const delay=calcDelay(job.assignedAt);
-    await fbUpdate('jobs',job.id,{status:'on_the_way',onTheWayAt:firestore.FieldValue.serverTimestamp(),delayToStart:delay,delayFlag:delay>15});
+    await fbUpdate('bookings',job.id,{status:'on_the_way',onTheWayAt:firestore.FieldValue.serverTimestamp(),delayToStart:delay,delayFlag:delay>15});
     Alert.alert('✅ Updated','Customer notified you are on the way!');
   };
 
@@ -171,7 +171,7 @@ export default function App() {
       setPhotoPhase('before'); setPhotoModal(true); return;
     }
     const delay=calcDelay(job.onTheWayAt);
-    await fbUpdate('jobs',job.id,{status:'in_progress',startedAt:firestore.FieldValue.serverTimestamp(),otpVerified:true,delayToArrive:delay,delayFlag:delay>15});
+    await fbUpdate('bookings',job.id,{status:'in_progress',startedAt:firestore.FieldValue.serverTimestamp(),otpVerified:true,delayToArrive:delay,delayFlag:delay>15});
     setOtpInput('');
     Alert.alert('🚀 Job Started!','OTP verified. Do your best! 🪷');
   };
@@ -184,7 +184,7 @@ export default function App() {
     Alert.alert('Complete Job?','Service fully done and customer satisfied?',[
       {text:'Not yet',style:'cancel'},
       {text:'Yes, Complete!',onPress:async()=>{
-        await fbUpdate('jobs',job.id,{status:'completed',completedAt:firestore.FieldValue.serverTimestamp()});
+        await fbUpdate('bookings',job.id,{status:'completed',completedAt:firestore.FieldValue.serverTimestamp()});
         await firestore().collection('workers').doc(worker.id).update({
           totalJobsCompleted:firestore.FieldValue.increment(1),
           'attendance.jobsToday':firestore.FieldValue.increment(1),
@@ -200,7 +200,7 @@ export default function App() {
     if(!rejectReason){Alert.alert('Select a reason');return;}
     const reason=rejectReason==='Other'?rejectOther:rejectReason;
     if(!reason){Alert.alert('Describe the reason');return;}
-    await fbUpdate('jobs',job.id,{status:'rejected',rejectedBy:worker.id,rejectedByName:worker.name,rejectReason:reason,rejectedAt:firestore.FieldValue.serverTimestamp(),assignedWorkerId:null});
+    await fbUpdate('bookings',job.id,{status:'rejected',rejectedBy:worker.id,rejectedByName:worker.name,rejectReason:reason,rejectedAt:firestore.FieldValue.serverTimestamp(),assignedWorkerId:null});
     setRejectModal(false); setRejectReason(''); setRejectOther(''); setSelJob(null);
     Alert.alert('Job Rejected','Hub manager has been notified.');
   };
@@ -213,7 +213,7 @@ export default function App() {
         const current=job[`${phase}Photos`]||[];
         if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
         const url=`https://picsum.photos/seed/${job.id}_${phase}_${Date.now()}/800/600`;
-        await fbUpdate('jobs',job.id,{[`${phase}Photos`]:[...current,url]});
+        await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
         setUploading(false);
         Alert.alert('✅ Photo Added');
       }},
