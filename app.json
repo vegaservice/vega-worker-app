@@ -5,48 +5,59 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#06100A"
+      "backgroundColor": "#0A1A0A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.vegavizag.worker",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "VEGA needs camera for before/after service photos",
+        "NSPhotoLibraryUsageDescription": "VEGA needs photo access for service documentation",
+        "NSLocationWhenInUseUsageDescription": "VEGA needs your location to navigate to customer"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#06100A"
+        "backgroundColor": "#1A3A1A"
       },
       "package": "com.vegavizag.worker",
-      "googleServicesFile": "./google-services.json"
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
     },
-    "ios": {
-      "bundleIdentifier": "com.vegavizag.worker",
-      "googleServicesFile": "./GoogleService-Info.plist",
-      "supportsTablet": false
-    },
-    "owner": "mahesh1331",
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
+      "@react-native-firebase/messaging",
       [
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34,
-            "minSdkVersion": 24
-          },
-          "ios": {
-            "useFrameworks": "static"
+            "googleServicesFile": "./google-services.json"
           }
         }
-      ],
-      "@react-native-firebase/messaging"
+      ]
     ],
     "extra": {
       "eas": {
-        "projectId": "5f6b840a-bb39-4b43-88df-44742c985da7"
+        "projectId": "a2cb81a3-7b99-49f5-9ec4-6ace8e81d762"
       }
-    }
+    },
+    "owner": "mahesh1331"
   }
 }
