@@ -587,6 +587,14 @@ export default function App() {
         <Text style={{color:C.text2,fontSize:12,marginTop:2}}>🔧 {job.serviceType||'Home Cleaning'}</Text>
         <Text style={{color:C.muted,fontSize:12,marginTop:2}}>📍 {(job.addressFull||'').substring(0,50)}{(job.addressFull||'').length>50?'...':''}</Text>
         <Text style={{color:C.muted,fontSize:11,marginTop:2}}>📅 {job.slot||job.scheduledTime||'Today'}</Text>
+        {job.bookingMode==='recurring'&&job.recurFreq&&(
+          <View style={{flexDirection:'row',alignItems:'center',gap:4,marginTop:4}}>
+            <View style={{backgroundColor:'#FFF8E7',paddingHorizontal:7,paddingVertical:2,borderRadius:8,borderWidth:0.5,borderColor:'#D4A017'}}>
+              <Text style={{color:'#B8860B',fontSize:10,fontWeight:'700'}}>🔄 {job.recurFreq} Recurring</Text>
+            </View>
+            {job.isRecurringChild&&<Text style={{color:C.muted,fontSize:10}}>#{job.recurIndex+1}</Text>}
+          </View>
+        )}
         {/* 🚫 NO price/amount */}
         <View style={{flexDirection:'row',gap:8,marginTop:10}}>
           <View style={{paddingHorizontal:8,paddingVertical:3,borderRadius:8,backgroundColor:before>0?C.greenBg:C.orangeBg,borderWidth:0.5,borderColor:before>0?C.greenBd:C.orangeBd}}>

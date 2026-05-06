@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "VEGA Professional",
-    "slug": "vega-worker",
+    "slug": "vega-home-services",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0A1A0A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.vegavizag.worker",
