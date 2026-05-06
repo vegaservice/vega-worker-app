@@ -111,8 +111,16 @@ export default function App() {
     if(!worker) return;
     const unsub=firestore().collection('bookings')
       .where('assignedWorkerId','==',worker.id)
+      .where('status','in',['assigned','on_the_way','in_progress','completed'])
       .orderBy('createdAt','desc')
-      .onSnapshot(snap=>setMyJobs(snap.docs.map(d=>({id:d.id,...d.data()}))));
+      .limit(50)
+      .onSnapshot(
+        snap=>setMyJobs(snap.docs.map(d=>({id:d.id,...d.data()}))),
+        err=>{
+          console.error('jobs listener error:',err);
+          Alert.alert('Connection Issue','Showing last known data. Check your internet.');
+        }
+      );
     const unsubFCM=messaging().onMessage(async msg=>{
       Alert.alert(msg.notification?.title||'🪷 VEGA',msg.notification?.body||'New update');
     });
