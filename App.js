@@ -14,6 +14,7 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width: W } = Dimensions.get('window');
 
@@ -221,20 +222,28 @@ export default function App() {
   };
 
   const addPhoto=async(job,phase)=>{
-    Alert.alert(`Add ${phase==='before'?'Before':'After'} Photo`,'Opens camera in production. Simulating now.',[
-      {text:'Cancel',style:'cancel'},
-      {text:'Simulate Upload',onPress:async()=>{
-        setUploading(true);
-        const freshJob=myJobs.find(j=>j.id===job.id)||job;
-        const current=freshJob[`${phase}Photos`]||[];
-        if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
-        const url=`https://picsum.photos/seed/${job.id}_${phase}_${Date.now()}/800/600`;
-        await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
-        setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
-        setUploading(false);
-        Alert.alert('✅ Photo Added');
-      }},
-    ]);
+    // Real camera implementation
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Camera permission is required to take photos.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
+    if (result.canceled) return;
+    const url = result.assets[0].uri;
+    setUploading(true);
+    const freshJob=myJobs.find(j=>j.id===job.id)||job;
+    const current=freshJob[`${phase}Photos`]||[];
+    if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
+    await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
+    setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
+    setUploading(false);
+    Alert.alert('✅ Photo Added');
   };
 
   // Computed
@@ -467,7 +476,7 @@ export default function App() {
               <Text style={S.detailLabel}>📸 PHOTO PROOF (MANDATORY)</Text>
 
               <TouchableOpacity style={{backgroundColor:C.orangeBg,borderRadius:12,padding:12,marginTop:12,borderWidth:0.5,borderColor:C.orangeBd,flexDirection:'row',alignItems:'center',gap:10}}
-                onPress={()=>{setPhotoPhase('before');setPhotoModal(true);}}>
+                onPress={()=>{setPhotoPhase('before');setPhotoModal(true);}}>  
                 <Text style={{fontSize:20}}>📷</Text>
                 <View style={{flex:1}}>
                   <Text style={{color:C.orange,fontWeight:'700',fontSize:13}}>BEFORE Photos</Text>
@@ -479,7 +488,7 @@ export default function App() {
               </TouchableOpacity>
 
               <TouchableOpacity style={{backgroundColor:C.greenBg,borderRadius:12,padding:12,marginTop:10,borderWidth:0.5,borderColor:C.greenBd,flexDirection:'row',alignItems:'center',gap:10}}
-                onPress={()=>{setPhotoPhase('after');setPhotoModal(true);}}>
+                onPress={()=>{setPhotoPhase('after');setPhotoModal(true);}}>  
                 <Text style={{fontSize:20}}>📷</Text>
                 <View style={{flex:1}}>
                   <Text style={{color:C.green,fontWeight:'700',fontSize:13}}>AFTER Photos</Text>
