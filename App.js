@@ -127,6 +127,13 @@ export default function App() {
     return()=>{ unsub(); unsubFCM(); };
   },[worker]);
 
+  // Sync selJob with live Firestore data to prevent stale state
+  useEffect(()=>{
+    if(!selJob) return;
+    const updated=myJobs.find(j=>j.id===selJob.id);
+    if(updated) setSelJob(updated);
+  },[myJobs]);
+
   // AUTH
   const sendOTP=async()=>{
     if(!phone||phone.length<10){Alert.alert('Enter valid number');return;}
@@ -218,10 +225,12 @@ export default function App() {
       {text:'Cancel',style:'cancel'},
       {text:'Simulate Upload',onPress:async()=>{
         setUploading(true);
-        const current=job[`${phase}Photos`]||[];
+        const freshJob=myJobs.find(j=>j.id===job.id)||job;
+        const current=freshJob[`${phase}Photos`]||[];
         if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
         const url=`https://picsum.photos/seed/${job.id}_${phase}_${Date.now()}/800/600`;
         await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
+        setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
         setUploading(false);
         Alert.alert('✅ Photo Added');
       }},
@@ -428,7 +437,8 @@ export default function App() {
               <Text style={{color:C.text2,fontSize:13,marginTop:4}}>📍 {selJob.addressFull||selJob.address?.full||'Address'}</Text>
               <View style={{flexDirection:'row',gap:10,marginTop:14}}>
                 <TouchableOpacity style={[S.actionBtn,{flex:1,backgroundColor:C.greenBg,borderColor:C.greenBd}]}
-                  onPress={()=>Linking.openURL(`tel:+91${selJob.userPhone||selJob.customerPhone}`)}>
+                  onPress={()=>Linking.openURL(`tel:+91${selJob.userPhone||selJob.customerPhone}`)}
+                  >
                   <Text style={{fontSize:16}}>📞</Text><Text style={{color:C.green,fontWeight:'700',fontSize:12}}>Call Customer</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[S.actionBtn,{flex:1,backgroundColor:C.blueBg,borderColor:C.blueBd}]}
