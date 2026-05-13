@@ -231,6 +231,8 @@ export default function App() {
           totalJobsCompleted:firestore.FieldValue.increment(1),
           'attendance.jobsToday':firestore.FieldValue.increment(1),
           'attendance.jobsWeek':firestore.FieldValue.increment(1),
+          isAvailable:true,
+          currentJobId:null,
         });
         Alert.alert('🎉 Job Complete!','Great work! 🪷');
         setSelJob(null);
