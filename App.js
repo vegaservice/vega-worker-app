@@ -14,6 +14,8 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
+import storage from '@react-native-firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width: W } = Dimensions.get('window');
 
@@ -72,6 +74,7 @@ export default function App() {
   const [myJobs,setMyJobs]=useState([]);
   const [selJob,setSelJob]=useState(null);
   const [otpInput,setOtpInput]=useState('');
+  const [otpAttempts,setOtpAttempts]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
   const [isAvailable,setIsAvailable]=useState(true);
   const [rejectModal,setRejectModal]=useState(false);
@@ -180,7 +183,14 @@ export default function App() {
 
   const verifyJobOTP=async(job)=>{
     if(!otpInput||otpInput.length<4){Alert.alert('Enter OTP','Ask customer for 4-digit OTP');return;}
-    if(otpInput!==job.otp){Alert.alert('Wrong OTP','Ask customer again.');return;}
+    if(otpAttempts>=3){Alert.alert('Too many attempts','Please contact your Hub Manager.');return;}
+    if(otpInput!==job.otp){
+      const newAttempts=otpAttempts+1;
+      setOtpAttempts(newAttempts);
+      const left=3-newAttempts;
+      Alert.alert('Wrong OTP', left>0?`Ask the customer again. ${left} attempt${left===1?'':'s'} remaining.`:'3 wrong attempts. Contact Hub Manager.');
+      return;
+    }
     if(!(job.beforePhotos||[]).length){
       Alert.alert('Photos Required','Upload BEFORE photos first.');
       setPhotoPhase('before'); setPhotoModal(true); return;
@@ -188,6 +198,7 @@ export default function App() {
     const delay=calcDelay(job.onTheWayAt);
     await fbUpdate('bookings',job.id,{status:'in_progress',startedAt:firestore.FieldValue.serverTimestamp(),otpVerified:true,delayToArrive:delay,delayFlag:delay>15});
     setOtpInput('');
+    setOtpAttempts(0);
     Alert.alert('🚀 Job Started!','OTP verified. Do your best! 🪷');
   };
 
@@ -221,20 +232,34 @@ export default function App() {
   };
 
   const addPhoto=async(job,phase)=>{
-    Alert.alert(`Add ${phase==='before'?'Before':'After'} Photo`,'Opens camera in production. Simulating now.',[
-      {text:'Cancel',style:'cancel'},
-      {text:'Simulate Upload',onPress:async()=>{
-        setUploading(true);
-        const freshJob=myJobs.find(j=>j.id===job.id)||job;
-        const current=freshJob[`${phase}Photos`]||[];
-        if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
-        const url=`https://picsum.photos/seed/${job.id}_${phase}_${Date.now()}/800/600`;
-        await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
-        setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
-        setUploading(false);
-        Alert.alert('✅ Photo Added');
-      }},
-    ]);
+    const freshJob=myJobs.find(j=>j.id===job.id)||job;
+    const current=freshJob[`${phase}Photos`]||[];
+    if(current.length>=5){Alert.alert('Max 5 photos','Remove one before adding more.');return;}
+    const {status}=await ImagePicker.requestCameraPermissionsAsync();
+    if(status!=='granted'){
+      Alert.alert('Camera permission needed','Please allow camera access in Settings.');
+      return;
+    }
+    const result=await ImagePicker.launchCameraAsync({
+      mediaTypes:ImagePicker.MediaTypeOptions.Images,
+      quality:0.75,allowsEditing:true,aspect:[4,3],
+    });
+    if(result.canceled) return;
+    setUploading(true);
+    try{
+      const uri=result.assets[0].uri;
+      const filename=`bookings/${job.id}/${phase}/${Date.now()}.jpg`;
+      const ref=storage().ref(filename);
+      await ref.putFile(uri);
+      const url=await ref.getDownloadURL();
+      await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
+      setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
+      setUploading(false);
+      Alert.alert('✅ Photo Added','Photo saved successfully.');
+    }catch(e){
+      setUploading(false);
+      Alert.alert('Upload failed',e.message||'Could not upload photo. Check internet connection.');
+    }
   };
 
   // Computed
