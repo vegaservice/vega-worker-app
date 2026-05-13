@@ -16,6 +16,7 @@ import firestore from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
 import storage from '@react-native-firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 
 const { width: W } = Dimensions.get('window');
 
@@ -100,13 +101,28 @@ export default function App() {
     }catch(e){console.log('FCM:',e);}
   };
 
-  // Live location ping every 30s
+  // Live GPS location ping every 30s — saved to Firestore for Hub Manager map view
   useEffect(()=>{
     if(!worker) return;
-    const interval=setInterval(async()=>{
-      await fbUpdate('workers',worker.id,{lastLocationAt:firestore.FieldValue.serverTimestamp()});
-    },30000);
-    return()=>clearInterval(interval);
+    let intervalId=null;
+    (async()=>{
+      const {status}=await Location.requestForegroundPermissionsAsync();
+      intervalId=setInterval(async()=>{
+        try{
+          if(status==='granted'){
+            const loc=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});
+            await fbUpdate('workers',worker.id,{
+              lastLat:loc.coords.latitude,
+              lastLng:loc.coords.longitude,
+              lastLocationAt:firestore.FieldValue.serverTimestamp(),
+            });
+          }else{
+            await fbUpdate('workers',worker.id,{lastLocationAt:firestore.FieldValue.serverTimestamp()});
+          }
+        }catch(e){console.log('loc update:',e);}
+      },30000);
+    })();
+    return()=>{if(intervalId)clearInterval(intervalId);};
   },[worker]);
 
   // Jobs listener
