@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.vegaservice.worker",
+      "bundleIdentifier": "com.vegavizag.worker",
       "buildNumber": "1",
       "appleTeamId": "73RYNYV3JU",
       "infoPlist": {
@@ -30,7 +30,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1A3A1A"
       },
-      "package": "com.vegaservice.worker",
+      "package": "com.vegavizag.worker",
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "permissions": [
