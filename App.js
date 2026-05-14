@@ -14,7 +14,9 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
+import storage from '@react-native-firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 
 const { width: W } = Dimensions.get('window');
 
@@ -73,6 +75,7 @@ export default function App() {
   const [myJobs,setMyJobs]=useState([]);
   const [selJob,setSelJob]=useState(null);
   const [otpInput,setOtpInput]=useState('');
+  const [otpAttempts,setOtpAttempts]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
   const [isAvailable,setIsAvailable]=useState(true);
   const [rejectModal,setRejectModal]=useState(false);
@@ -98,13 +101,28 @@ export default function App() {
     }catch(e){console.log('FCM:',e);}
   };
 
-  // Live location ping every 30s
+  // Live GPS location ping every 30s — saved to Firestore for Hub Manager map view
   useEffect(()=>{
     if(!worker) return;
-    const interval=setInterval(async()=>{
-      await fbUpdate('workers',worker.id,{lastLocationAt:firestore.FieldValue.serverTimestamp()});
-    },30000);
-    return()=>clearInterval(interval);
+    let intervalId=null;
+    (async()=>{
+      const {status}=await Location.requestForegroundPermissionsAsync();
+      intervalId=setInterval(async()=>{
+        try{
+          if(status==='granted'){
+            const loc=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});
+            await fbUpdate('workers',worker.id,{
+              lastLat:loc.coords.latitude,
+              lastLng:loc.coords.longitude,
+              lastLocationAt:firestore.FieldValue.serverTimestamp(),
+            });
+          }else{
+            await fbUpdate('workers',worker.id,{lastLocationAt:firestore.FieldValue.serverTimestamp()});
+          }
+        }catch(e){console.log('loc update:',e);}
+      },30000);
+    })();
+    return()=>{if(intervalId)clearInterval(intervalId);};
   },[worker]);
 
   // Jobs listener
@@ -181,7 +199,14 @@ export default function App() {
 
   const verifyJobOTP=async(job)=>{
     if(!otpInput||otpInput.length<4){Alert.alert('Enter OTP','Ask customer for 4-digit OTP');return;}
-    if(otpInput!==job.otp){Alert.alert('Wrong OTP','Ask customer again.');return;}
+    if(otpAttempts>=3){Alert.alert('Too many attempts','Please contact your Hub Manager.');return;}
+    if(otpInput!==job.otp){
+      const newAttempts=otpAttempts+1;
+      setOtpAttempts(newAttempts);
+      const left=3-newAttempts;
+      Alert.alert('Wrong OTP', left>0?`Ask the customer again. ${left} attempt${left===1?'':'s'} remaining.`:'3 wrong attempts. Contact Hub Manager.');
+      return;
+    }
     if(!(job.beforePhotos||[]).length){
       Alert.alert('Photos Required','Upload BEFORE photos first.');
       setPhotoPhase('before'); setPhotoModal(true); return;
@@ -189,6 +214,7 @@ export default function App() {
     const delay=calcDelay(job.onTheWayAt);
     await fbUpdate('bookings',job.id,{status:'in_progress',startedAt:firestore.FieldValue.serverTimestamp(),otpVerified:true,delayToArrive:delay,delayFlag:delay>15});
     setOtpInput('');
+    setOtpAttempts(0);
     Alert.alert('🚀 Job Started!','OTP verified. Do your best! 🪷');
   };
 
@@ -205,6 +231,8 @@ export default function App() {
           totalJobsCompleted:firestore.FieldValue.increment(1),
           'attendance.jobsToday':firestore.FieldValue.increment(1),
           'attendance.jobsWeek':firestore.FieldValue.increment(1),
+          isAvailable:true,
+          currentJobId:null,
         });
         Alert.alert('🎉 Job Complete!','Great work! 🪷');
         setSelJob(null);
@@ -222,28 +250,34 @@ export default function App() {
   };
 
   const addPhoto=async(job,phase)=>{
-    // Real camera implementation
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Camera permission is required to take photos.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.7,
-    });
-    if (result.canceled) return;
-    const url = result.assets[0].uri;
-    setUploading(true);
     const freshJob=myJobs.find(j=>j.id===job.id)||job;
     const current=freshJob[`${phase}Photos`]||[];
-    if(current.length>=5){Alert.alert('Max 5 photos');setUploading(false);return;}
-    await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
-    setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
-    setUploading(false);
-    Alert.alert('✅ Photo Added');
+    if(current.length>=5){Alert.alert('Max 5 photos','Remove one before adding more.');return;}
+    const {status}=await ImagePicker.requestCameraPermissionsAsync();
+    if(status!=='granted'){
+      Alert.alert('Camera permission needed','Please allow camera access in Settings.');
+      return;
+    }
+    const result=await ImagePicker.launchCameraAsync({
+      mediaTypes:ImagePicker.MediaTypeOptions.Images,
+      quality:0.75,allowsEditing:true,aspect:[4,3],
+    });
+    if(result.canceled) return;
+    setUploading(true);
+    try{
+      const uri=result.assets[0].uri;
+      const filename=`bookings/${job.id}/${phase}/${Date.now()}.jpg`;
+      const ref=storage().ref(filename);
+      await ref.putFile(uri);
+      const url=await ref.getDownloadURL();
+      await fbUpdate('bookings',job.id,{[`${phase}Photos`]:[...current,url]});
+      setSelJob(prev=>prev?{...prev,[`${phase}Photos`]:[...current,url]}:prev);
+      setUploading(false);
+      Alert.alert('✅ Photo Added','Photo saved successfully.');
+    }catch(e){
+      setUploading(false);
+      Alert.alert('Upload failed',e.message||'Could not upload photo. Check internet connection.');
+    }
   };
 
   // Computed
@@ -476,7 +510,7 @@ export default function App() {
               <Text style={S.detailLabel}>📸 PHOTO PROOF (MANDATORY)</Text>
 
               <TouchableOpacity style={{backgroundColor:C.orangeBg,borderRadius:12,padding:12,marginTop:12,borderWidth:0.5,borderColor:C.orangeBd,flexDirection:'row',alignItems:'center',gap:10}}
-                onPress={()=>{setPhotoPhase('before');setPhotoModal(true);}}>  
+                onPress={()=>{setPhotoPhase('before');setPhotoModal(true);}}>
                 <Text style={{fontSize:20}}>📷</Text>
                 <View style={{flex:1}}>
                   <Text style={{color:C.orange,fontWeight:'700',fontSize:13}}>BEFORE Photos</Text>
@@ -488,7 +522,7 @@ export default function App() {
               </TouchableOpacity>
 
               <TouchableOpacity style={{backgroundColor:C.greenBg,borderRadius:12,padding:12,marginTop:10,borderWidth:0.5,borderColor:C.greenBd,flexDirection:'row',alignItems:'center',gap:10}}
-                onPress={()=>{setPhotoPhase('after');setPhotoModal(true);}}>  
+                onPress={()=>{setPhotoPhase('after');setPhotoModal(true);}}>
                 <Text style={{fontSize:20}}>📷</Text>
                 <View style={{flex:1}}>
                   <Text style={{color:C.green,fontWeight:'700',fontSize:13}}>AFTER Photos</Text>

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "VEGA Professional",
-    "slug": "vega-home-services",
+    "slug": "vega-professional",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,7 +18,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.vegavizag.worker",
       "buildNumber": "1",
+      "appleTeamId": "73RYNYV3JU",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "VEGA needs camera for before/after service photos",
         "NSPhotoLibraryUsageDescription": "VEGA needs photo access for service documentation",
         "NSLocationWhenInUseUsageDescription": "VEGA needs your location to navigate to customer"
