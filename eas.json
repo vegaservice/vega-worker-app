@@ -7,17 +7,30 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "ios": { "simulator": true }
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk", "gradleCommand": ":app:assembleRelease" },
-      "ios": { "simulator": false }
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "ios": {
+        "simulator": false
+      }
     },
     "production": {
-      "android": { "buildType": "app-bundle" },
-      "ios": { "simulator": false }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      }
     }
   },
   "submit": {
@@ -31,7 +44,8 @@
         "ascAppId": "6769144368",
         "appleTeamId": "73RYNYV3JU",
         "ascApiKeyId": "LHLV7R8HWA",
-        "ascApiKeyIssuerId": "cd055938-80a7-4ccc-9bad-cec819845051"
+        "ascApiKeyIssuerId": "cd055938-80a7-4ccc-9bad-cec819845051",
+        "ascApiKeyPath": "./asc-api-key.p8"
       }
     }
   }
