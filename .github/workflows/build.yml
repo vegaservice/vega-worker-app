@@ -63,6 +63,11 @@ jobs:
       - name: Build iOS
         run: eas build --platform ios --profile production --non-interactive
 
+      - name: Write ASC API key for submission
+        run: printf '%s' "$ASC_KEY" > asc-api-key.p8
+        env:
+          ASC_KEY: ${{ secrets.ASC_API_KEY_CONTENT }}
+
       - name: Submit iOS to TestFlight
         run: eas submit --platform ios --profile production --non-interactive --latest
         env:
