@@ -1,0 +1,93 @@
+name: Build & Distribute via Firebase App Distribution
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-distribute:
+    name: Build APK & Distribute
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK (preview profile)
+        run: eas build --platform android --profile preview --non-interactive --no-wait --json > build-output.json
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Wait for EAS build and get APK URL
+        run: |
+          BUILD_ID=$(cat build-output.json | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log(Array.isArray(d)?d[0].id:d.id);")
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "Waiting for build $BUILD_ID..."
+          npx eas-cli build:view $BUILD_ID --json 2>/dev/null | node -e "
+            const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            let build = Array.isArray(d)?d[0]:d;
+            let attempts=0;
+            const wait=()=>setTimeout(async()=>{
+              const {execSync}=require('child_process');
+              const out=execSync('npx eas-cli build:view '+build.id+' --json 2>/dev/null').toString();
+              const b=JSON.parse(out); build=Array.isArray(b)?b[0]:b;
+              if(build.status==='FINISHED'||attempts++>30){
+                console.log('APK_URL='+build.artifacts?.buildUrl);
+                process.stdout.write('APK_URL='+build.artifacts?.buildUrl+'\n');
+                process.exit(0);
+              }
+              wait();
+            },30000); wait();
+          " || true
+          # Simple approach: wait and poll
+          for i in {1..40}; do
+            STATUS=$(eas build:view $BUILD_ID --json 2>/dev/null | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); const b=Array.isArray(d)?d[0]:d; console.log(b.status+'|'+(b.artifacts?.buildUrl||''));" 2>/dev/null || echo "PENDING|")
+            BUILD_STATUS=$(echo $STATUS | cut -d'|' -f1)
+            BUILD_URL=$(echo $STATUS | cut -d'|' -f2)
+            echo "Attempt $i: status=$BUILD_STATUS"
+            if [ "$BUILD_STATUS" = "FINISHED" ] && [ -n "$BUILD_URL" ]; then
+              echo "APK_URL=$BUILD_URL" >> $GITHUB_ENV
+              break
+            fi
+            if [ "$BUILD_STATUS" = "ERRORED" ] || [ "$BUILD_STATUS" = "CANCELLED" ]; then
+              echo "Build failed with status: $BUILD_STATUS"
+              exit 1
+            fi
+            sleep 60
+          done
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        run: |
+          echo "Downloading APK from $APK_URL"
+          curl -L "$APK_URL" -o app-release.apk
+          ls -la app-release.apk
+
+      - name: Distribute to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_WORKER_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: worker-testers
+          file: app-release.apk
+          releaseNotes: |
+            Build from commit ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            ${{ github.event.head_commit.message }}
