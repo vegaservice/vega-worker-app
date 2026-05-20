@@ -101,7 +101,7 @@ export default function App() {
     }catch(e){console.log('FCM:',e);}
   };
 
-  // Live GPS location ping every 30s — saved to Firestore for Hub Manager map view
+  // Live GPS location ping every 30s — saved to Firestore for Admin map + route playback
   useEffect(()=>{
     if(!worker) return;
     let intervalId=null;
@@ -111,16 +111,28 @@ export default function App() {
         try{
           if(status==='granted'){
             const loc=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});
+            const lat=loc.coords.latitude;
+            const lng=loc.coords.longitude;
+            const now=firestore.FieldValue.serverTimestamp();
+            // Update current location on worker doc
             await fbUpdate('workers',worker.id,{
-              lastLat:loc.coords.latitude,
-              lastLng:loc.coords.longitude,
-              lastLocationAt:firestore.FieldValue.serverTimestamp(),
+              lastLat:lat, lastLng:lng,
+              lastLocationAt:now,
+              lastLocation:{lat,lng},  // also in new format for Admin map
+              locationUpdatedAt:now,
             });
+            // Write to trail subcollection for route playback
+            const today=new Date();
+            const dayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+            await firestore()
+              .collection('workers').doc(worker.id)
+              .collection('location_trail')
+              .add({ lat, lng, timestamp:firestore.FieldValue.serverTimestamp(), day:dayKey });
           }else{
             await fbUpdate('workers',worker.id,{lastLocationAt:firestore.FieldValue.serverTimestamp()});
           }
         }catch(e){console.log('loc update:',e);}
-      },30000);
+      },30000); // every 30 seconds
     })();
     return()=>{if(intervalId)clearInterval(intervalId);};
   },[worker]);
