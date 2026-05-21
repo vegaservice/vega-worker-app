@@ -84,12 +84,32 @@ export default function App() {
   const [photoPhase,setPhotoPhase]=useState('before');
   const [photoModal,setPhotoModal]=useState(false);
   const [uploading,setUploading]=useState(false);
+  const [phoneError,setPhoneError]=useState('');
+  const [otpError,setOtpError]=useState('');
 
   const fadeAnim=useRef(new Animated.Value(0)).current;
 
   useEffect(()=>{
     Animated.timing(fadeAnim,{toValue:1,duration:1200,useNativeDriver:true}).start();
-    setTimeout(()=>setScreen('login'),2500);
+    // ── Session Restore: don't ask OTP on every open ──────────
+    const unsubAuth=auth().onAuthStateChanged(async(fUser)=>{
+      if(fUser){
+        try{
+          const ph=fUser.phoneNumber?.replace('+91','');
+          const snap=await firestore().collection('workers').where('phone','==',ph).limit(1).get();
+          if(!snap.empty){
+            const wData={id:snap.docs[0].id,...snap.docs[0].data()};
+            if(wData.status==='active'||wData.status==='inactive'){
+              setWorker(wData);setIsAvailable(wData.isAvailable!==false);
+              await registerFCM(wData.id);
+              setScreen('main');return;
+            }
+          }
+        }catch(e){console.log('session restore:',e);}
+      }
+      setScreen('login');
+    });
+    return()=>unsubAuth();
   },[]);
 
   // FCM setup
@@ -167,28 +187,35 @@ export default function App() {
 
   // AUTH
   const sendOTP=async()=>{
-    if(!phone||phone.length<10){Alert.alert('Enter valid number');return;}
-    setLoading(true);
+    if(!phone||phone.length<10){setPhoneError('Enter a valid 10-digit mobile number');return;}
+    setPhoneError('');setLoading(true);
     try{
       const c=await auth().signInWithPhoneNumber(`+91${phone}`);
       setConfirm(c); setLoading(false); setScreen('otp');
-    }catch(e){setLoading(false);Alert.alert('OTP Failed',e.message);}
+    }catch(e){setLoading(false);setPhoneError(e.message||'Could not send OTP. Try again.');}
   };
 
   const verifyOTP=async()=>{
     if(!otpVal||otpVal.length<6) return;
-    setLoading(true);
+    setOtpError('');setLoading(true);
     try{
       await confirm.confirm(otpVal);
       const snap=await firestore().collection('workers').where('phone','==',phone).limit(1).get();
-      if(snap.empty){auth().signOut();setLoading(false);Alert.alert('Access Denied','Not registered as VEGA professional.');return;}
+      if(snap.empty){auth().signOut();setLoading(false);setOtpError('Not registered as a VEGA professional. Contact hub manager: 9441270570');return;}
       const wData={id:snap.docs[0].id,...snap.docs[0].data()};
-      if(wData.status==='suspended'){auth().signOut();setLoading(false);Alert.alert('Suspended','Contact hub manager: 9441270570');return;}
-      if(wData.status==='blocked'){auth().signOut();setLoading(false);Alert.alert('Blocked','Contact VEGA admin.');return;}
+      if(wData.status==='suspended'){auth().signOut();setLoading(false);setOtpError('Account suspended. Contact hub manager: 9441270570');return;}
+      if(wData.status==='blocked'){auth().signOut();setLoading(false);setOtpError('Account blocked. Contact VEGA admin.');return;}
       setWorker(wData); setIsAvailable(wData.isAvailable!==false);
       await registerFCM(wData.id);
       setLoading(false); setScreen('main');
-    }catch(e){setLoading(false);Alert.alert('Wrong OTP',e.message);}
+    }catch(e){
+      setLoading(false);
+      const code=e?.code||'';
+      if(code.includes('invalid-verification-code')||code.includes('invalid-code')) setOtpError('Wrong OTP. Please check and try again.');
+      else if(code.includes('code-expired')) setOtpError('OTP expired. Go back and request a new one.');
+      else if(code.includes('session-expired')) setOtpError('Session expired. Go back and request OTP again.');
+      else setOtpError(e.message||'Verification failed. Try again.');
+    }
   };
 
   const toggleAvailability=async(val)=>{
@@ -292,11 +319,14 @@ export default function App() {
     }
   };
 
-  // Computed
-  const todayStr=new Date().toDateString();
+  // Computed — use scheduledDate for today filter, not createdAt
+  const todayStr=new Date().toISOString().split('T')[0];
   const todayJobs=myJobs.filter(j=>{
+    if(j.bookingMode==='instant') return true; // instant bookings always show as today
+    if(j.scheduledDate) return j.scheduledDate===todayStr;
+    // fallback: created today
     const d=j.createdAt?.toDate?j.createdAt.toDate():new Date(j.createdAt||0);
-    return d.toDateString()===todayStr;
+    return d.toISOString().split('T')[0]===todayStr;
   });
   const activeJobs=myJobs.filter(j=>['assigned','on_the_way','in_progress'].includes(j.status));
   const completedJobs=myJobs.filter(j=>j.status==='completed');
@@ -329,7 +359,8 @@ export default function App() {
           <TextInput style={S.phoneInp} placeholder="Enter your number" placeholderTextColor={C.muted}
             keyboardType="number-pad" maxLength={10} value={phone} onChangeText={setPhone} color={C.text}/>
         </View>
-        <TouchableOpacity style={[S.btn,phone.length<10&&{opacity:0.4},{marginTop:24}]} disabled={phone.length<10||loading} onPress={sendOTP}>
+        {phoneError?<Text style={{color:C.red,fontSize:13,marginTop:8,marginBottom:4}}>{phoneError}</Text>:null}
+        <TouchableOpacity style={[S.btn,phone.length<10&&{opacity:0.4},{marginTop:16}]} disabled={phone.length<10||loading} onPress={sendOTP}>
           {loading?<ActivityIndicator color="#FFF"/>:<Text style={S.btnT}>Send OTP →</Text>}
         </TouchableOpacity>
         <View style={{marginTop:28,backgroundColor:C.greenBg,borderRadius:14,padding:14,borderWidth:0.5,borderColor:C.greenBd}}>
@@ -352,7 +383,8 @@ export default function App() {
         <TextInput style={[S.inp,{fontSize:32,fontWeight:'900',letterSpacing:16,textAlign:'center',paddingVertical:20}]}
           placeholder="——————" placeholderTextColor={C.border2} keyboardType="number-pad" maxLength={6}
           value={otpVal} onChangeText={setOtpVal} color={C.text}/>
-        <TouchableOpacity style={[S.btn,otpVal.length<6&&{opacity:0.4},{marginTop:24}]} disabled={otpVal.length<6||loading} onPress={verifyOTP}>
+        {otpError?<Text style={{color:C.red,fontSize:13,marginTop:8,marginBottom:4,lineHeight:18}}>{otpError}</Text>:null}
+        <TouchableOpacity style={[S.btn,otpVal.length<6&&{opacity:0.4},{marginTop:16}]} disabled={otpVal.length<6||loading} onPress={verifyOTP}>
           {loading?<ActivityIndicator color="#FFF"/>:<Text style={S.btnT}>Verify & Login →</Text>}
         </TouchableOpacity>
       </View>
@@ -477,7 +509,7 @@ export default function App() {
                 <Text style={{color:C.muted,fontSize:12}}>{timeAgo(selJob.createdAt)}</Text>
               </View>
               <Text style={{color:C.text2,fontSize:13,marginTop:6}}>📅 {selJob.slot||selJob.scheduledTime||'Today'}</Text>
-              <Text style={{color:C.text2,fontSize:13,marginTop:2}}>🔧 {selJob.serviceType||'Home Cleaning'}</Text>
+              <Text style={{color:C.text2,fontSize:13,marginTop:2}}>🔧 {selJob.serviceType||'Home Cleaning'}{selJob.carType?` — ${selJob.carType.charAt(0).toUpperCase()+selJob.carType.slice(1)}`:''}</Text>
               {selJob.delayFlag&&(
                 <View style={{backgroundColor:C.redBg,borderRadius:10,padding:8,marginTop:10,flexDirection:'row',gap:8,borderWidth:0.5,borderColor:C.redBd}}>
                   <Text style={{color:C.red,fontSize:12}}>⚠️ Delay flagged by system</Text>
@@ -649,15 +681,15 @@ export default function App() {
           {job.delayFlag&&<Text style={{color:C.red,fontSize:11}}>⚠️ Delayed</Text>}
         </View>
         <Text style={{color:C.text,fontSize:14,fontWeight:'600'}}>{job.customerName||job.userName||'Customer'}</Text>
-        <Text style={{color:C.text2,fontSize:12,marginTop:2}}>🔧 {job.serviceType||'Home Cleaning'}</Text>
+        <Text style={{color:C.text2,fontSize:12,marginTop:2}}>🔧 {job.serviceType||'Home Cleaning'}{job.carType?` · ${job.carType.charAt(0).toUpperCase()+job.carType.slice(1)}`:''}</Text>
         <Text style={{color:C.muted,fontSize:12,marginTop:2}}>📍 {(job.addressFull||'').substring(0,50)}{(job.addressFull||'').length>50?'...':''}</Text>
         <Text style={{color:C.muted,fontSize:11,marginTop:2}}>📅 {job.slot||job.scheduledTime||'Today'}</Text>
         {job.bookingMode==='recurring'&&job.recurFreq&&(
-          <View style={{flexDirection:'row',alignItems:'center',gap:4,marginTop:4}}>
+          <View style={{flexDirection:'row',alignItems:'center',gap:4,marginTop:4,flexWrap:'wrap'}}>
             <View style={{backgroundColor:'#FFF8E7',paddingHorizontal:7,paddingVertical:2,borderRadius:8,borderWidth:0.5,borderColor:'#D4A017'}}>
-              <Text style={{color:'#B8860B',fontSize:10,fontWeight:'700'}}>🔄 {job.recurFreq} Recurring</Text>
+              <Text style={{color:'#B8860B',fontSize:10,fontWeight:'700'}}>🔄 {job.recurFreq} · {job.recurDuration||'1 month'} · {job.recurVisits||4} visits</Text>
             </View>
-            {job.isRecurringChild&&<Text style={{color:C.muted,fontSize:10}}>#{job.recurIndex+1}</Text>}
+            {job.isRecurringChild&&<Text style={{color:C.muted,fontSize:10}}>Visit #{(job.recurIndex||0)+1}</Text>}
           </View>
         )}
         {/* 🚫 NO price/amount */}
