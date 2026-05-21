@@ -106,8 +106,11 @@ export default function App() {
             }
           }
         }catch(e){console.log('session restore:',e);}
+        // Don't interrupt active OTP verification flow
+        setScreen(prev=>prev==='otp'?prev:'login');
+      } else {
+        setScreen(prev=>prev==='otp'?prev:'login');
       }
-      setScreen('login');
     });
     return()=>unsubAuth();
   },[]);
