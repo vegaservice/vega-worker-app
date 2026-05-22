@@ -507,8 +507,15 @@ export default function App() {
 
             {/* Job ID */}
             <View style={S.detailCard}>
-              <View style={{flexDirection:'row',justifyContent:'space-between'}}>
-                <Text style={{color:C.green,fontWeight:'800',fontSize:18}}>{selJob.orderId||selJob.id?.slice(-6)}</Text>
+              <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}>
+                <View style={{flexDirection:'row',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <Text style={{color:C.green,fontWeight:'800',fontSize:18}}>{selJob.orderId||selJob.id?.slice(-6)}</Text>
+                  {(selJob.isChildVisit||selJob.isRecurringChild||(selJob.visitNumber&&selJob.visitNumber>1))&&(
+                    <View style={{backgroundColor:C.purpleBg,paddingHorizontal:8,paddingVertical:3,borderRadius:10,borderWidth:0.5,borderColor:'#3A1060'}}>
+                      <Text style={{color:C.purple,fontSize:10,fontWeight:'700'}}>🔁 Visit {selJob.visitNumber||((selJob.recurIndex||0)+1)} of {selJob.totalVisits||selJob.recurVisits||'?'}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={{color:C.muted,fontSize:12}}>{timeAgo(selJob.createdAt)}</Text>
               </View>
               <Text style={{color:C.text2,fontSize:13,marginTop:6}}>📅 {selJob.slot||selJob.scheduledTime||'Today'}</Text>
@@ -675,11 +682,16 @@ export default function App() {
     return(
       <TouchableOpacity style={[S.card,{marginBottom:12}]} onPress={()=>setSelJob(job)}>
         <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:8}}>
-          <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
+          <View style={{flexDirection:'row',alignItems:'center',gap:6,flexWrap:'wrap',flex:1}}>
             <Text style={{color:C.green,fontWeight:'800',fontSize:14}}>{job.orderId||job.id?.slice(-6)}</Text>
             <View style={{paddingHorizontal:8,paddingVertical:2,borderRadius:10,backgroundColor:sc.bg}}>
               <Text style={{color:sc.text,fontSize:10,fontWeight:'700'}}>{sc.label}</Text>
             </View>
+            {(job.isChildVisit||job.isRecurringChild||(job.visitNumber&&job.visitNumber>1))&&(
+              <View style={{backgroundColor:C.purpleBg,paddingHorizontal:6,paddingVertical:2,borderRadius:8,borderWidth:0.5,borderColor:'#3A1060'}}>
+                <Text style={{color:C.purple,fontSize:9,fontWeight:'700'}}>🔁 Visit {job.visitNumber||((job.recurIndex||0)+1)} of {job.totalVisits||job.recurVisits||'?'}</Text>
+              </View>
+            )}
           </View>
           {job.delayFlag&&<Text style={{color:C.red,fontSize:11}}>⚠️ Delayed</Text>}
         </View>
