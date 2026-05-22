@@ -204,8 +204,27 @@ export default function App() {
     try{
       await confirm.confirm(otpVal);
       const snap=await firestore().collection('workers').where('phone','==',phone).limit(1).get();
-      if(snap.empty){auth().signOut();setLoading(false);setOtpError('Not registered as a VEGA professional. Contact hub manager: 9441270570');return;}
-      const wData={id:snap.docs[0].id,...snap.docs[0].data()};
+      // Test phones auto-create worker doc on first login (no manual setup needed)
+      const TEST_WORKER_PHONES = ['9000000002','9999999997','7777777702'];
+      let wData;
+      if(snap.empty){
+        if(TEST_WORKER_PHONES.includes(phone)){
+          const wId=`worker_${phone}`;
+          const newWorker={
+            id:wId, name:'Test Professional', phone,
+            role:'worker', status:'active', isAvailable:true,
+            currentArea:'Madhurawada', ratingAvg:4.8,
+            totalJobsCompleted:0, joinedAt:firestore.FieldValue.serverTimestamp(),
+          };
+          await firestore().collection('workers').doc(wId).set(newWorker,{merge:true});
+          wData=newWorker;
+        } else {
+          auth().signOut();setLoading(false);
+          setOtpError('Not registered as a VEGA professional. Contact hub manager: 9441270570');return;
+        }
+      } else {
+        wData={id:snap.docs[0].id,...snap.docs[0].data()};
+      }
       if(wData.status==='suspended'){auth().signOut();setLoading(false);setOtpError('Account suspended. Contact hub manager: 9441270570');return;}
       if(wData.status==='blocked'){auth().signOut();setLoading(false);setOtpError('Account blocked. Contact VEGA admin.');return;}
       setWorker(wData); setIsAvailable(wData.isAvailable!==false);
