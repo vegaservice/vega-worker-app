@@ -22,7 +22,8 @@
       },
       "ios": {
         "simulator": false
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "android": {
@@ -31,7 +32,8 @@
       "ios": {
         "simulator": false,
         "image": "latest"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
