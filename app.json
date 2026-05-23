@@ -21,7 +21,11 @@
       "appleTeamId": "73RYNYV3JU",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "VEGA uses your location to share live arrival ETAs with customers while you're on the way to or doing a job.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "VEGA uses your location during active jobs to update customers on your live position.",
+        "NSCameraUsageDescription": "VEGA needs camera access so you can upload before/after photos of completed jobs.",
+        "NSPhotoLibraryUsageDescription": "VEGA needs photo library access so you can attach existing photos to job completion reports."
       },
       "config": {
         "usesNonExemptEncryption": false

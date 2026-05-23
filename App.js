@@ -129,7 +129,17 @@ export default function App() {
     if(!worker) return;
     let intervalId=null;
     (async()=>{
-      const {status}=await Location.requestForegroundPermissionsAsync();
+      // DEFENSIVE: wrap permission request — on iOS without the required
+      // Info.plist key this would native-crash, and even with the key the
+      // call can throw on permission denial or simulator quirks.
+      let status='denied';
+      try {
+        const r = await Location.requestForegroundPermissionsAsync();
+        status = r.status;
+      } catch(e) {
+        console.log('Location permission request failed:', e?.message || e);
+        return;  // Skip location tracking entirely if permission API throws
+      }
       intervalId=setInterval(async()=>{
         try{
           if(status==='granted'){
