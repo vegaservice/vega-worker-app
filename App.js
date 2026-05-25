@@ -86,6 +86,8 @@ export default function App() {
   const [uploading,setUploading]=useState(false);
   const [phoneError,setPhoneError]=useState('');
   const [otpError,setOtpError]=useState('');
+  const [availableJobs,setAvailableJobs]=useState([]);
+  const [acceptingJobId,setAcceptingJobId]=useState(null);
 
   const fadeAnim=useRef(new Animated.Value(0)).current;
 
@@ -179,17 +181,36 @@ export default function App() {
       .orderBy('createdAt','desc')
       .limit(50)
       .onSnapshot(
-        snap=>setMyJobs(snap.docs.map(d=>({id:d.id,...d.data()}))),
+        snap=>{
+          console.log('[WorkerJobs] worker.id=', worker.id, 'snap.size=', snap.size, 'jobs=', snap.docs.map(d => ({ id:d.id, assignedWorkerId:d.data().assignedWorkerId, status:d.data().status, customer:d.data().customerName||d.data().userName })));
+          setMyJobs(snap.docs.map(d=>({id:d.id,...d.data()})));
+        },
         err=>{
           console.error('jobs listener error:',err);
           Alert.alert('Connection Issue','Showing last known data. Check your internet.');
         }
       );
+    // Available Jobs — pending/confirmed bookings with no assigned worker
+    const unsubAvailable=firestore().collection('bookings')
+      .where('status','in',['pending','confirmed'])
+      .orderBy('createdAt','desc')
+      .limit(50)
+      .onSnapshot(
+        snap=>{
+          if(!isAvailable){ setAvailableJobs([]); return; }
+          const jobs=snap.docs
+            .map(d=>({id:d.id,...d.data()}))
+            .filter(j=>!j.assignedWorkerId && !j.isChildVisit && !j.isRecurringChild);
+          setAvailableJobs(jobs);
+          console.log('[AvailableJobs] count=',jobs.length,'workerAvailable=',isAvailable);
+        },
+        err=>console.log('available jobs error:',err.message)
+      );
     const unsubFCM=messaging().onMessage(async msg=>{
       Alert.alert(msg.notification?.title||'🪷 VEGA',msg.notification?.body||'New update');
     });
-    return()=>{ unsub(); unsubFCM(); };
-  },[worker]);
+    return()=>{ unsub(); unsubAvailable(); unsubFCM(); };
+  },[worker,isAvailable]);
 
   // Sync selJob with live Firestore data to prevent stale state
   useEffect(()=>{
@@ -253,6 +274,50 @@ export default function App() {
   const toggleAvailability=async(val)=>{
     setIsAvailable(val);
     await fbUpdate('workers',worker.id,{isAvailable:val});
+  };
+
+  // Self-accept a job — race-safe transaction
+  const acceptJob=async(job)=>{
+    if(!worker||acceptingJobId) return;
+    setAcceptingJobId(job.id);
+    try{
+      await firestore().runTransaction(async(txn)=>{
+        const ref=firestore().collection('bookings').doc(job.id);
+        const snap=await txn.get(ref);
+        if(!snap.exists) throw new Error('Job no longer exists');
+        const data=snap.data();
+        if(data.assignedWorkerId){
+          throw new Error('Sorry, this job was just taken by another professional');
+        }
+        const status=(data.status||'').toLowerCase();
+        if(status!=='pending'&&status!=='confirmed'){
+          throw new Error('This job is no longer available');
+        }
+        txn.update(ref,{
+          assignedWorkerId:worker.id,
+          assignedWorkerName:worker.name,
+          assignedWorkerPhone:worker.phone,
+          status:'assigned',
+          acceptedBy:'worker',
+          assignedAt:firestore.FieldValue.serverTimestamp(),
+          serviceType:(data.items||[{name:'Service'}])[0]?.name||'Service',
+          customerName:data.customerName||data.userName||'Customer',
+          customerPhone:data.customerPhone||data.userPhone||'',
+        });
+        const workerRef=firestore().collection('workers').doc(worker.id);
+        txn.update(workerRef,{
+          isAvailable:false,
+          currentStatus:'on_job',
+          currentBookingId:job.id,
+        });
+      });
+      Alert.alert('✅ Job Accepted!','You can now see customer details in Today tab.');
+      setTab('today');
+    }catch(e){
+      Alert.alert('Could not accept',e.message||'This job is no longer available');
+    }finally{
+      setAcceptingJobId(null);
+    }
   };
 
   const onRefresh=async()=>{
@@ -754,6 +819,53 @@ export default function App() {
     );
   };
 
+  // AVAILABLE JOBS TAB — workers can self-accept
+  const AvailableJobsTab=({jobs,isAvailable,acceptJob,acceptingJobId})=>(
+    <ScrollView style={{flex:1,padding:16}}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.green}/>}>
+      {!isAvailable&&(
+        <View style={{backgroundColor:C.redBg,borderColor:C.redBd,borderWidth:1,borderRadius:14,padding:18,marginBottom:14,alignItems:'center'}}>
+          <Text style={{fontSize:34,marginBottom:6}}>🔒</Text>
+          <Text style={{color:C.red,fontWeight:'800',fontSize:16}}>You are Offline</Text>
+          <Text style={{color:C.text2,fontSize:12,marginTop:6,textAlign:'center'}}>Toggle Online in Profile to see and accept available jobs.</Text>
+        </View>
+      )}
+      {isAvailable&&jobs.length===0&&(
+        <View style={{alignItems:'center',paddingTop:80}}>
+          <Text style={{fontSize:60}}>🔔</Text>
+          <Text style={{color:C.muted,fontSize:15,marginTop:16,textAlign:'center'}}>
+            No available jobs right now — you'll be notified when one comes in.
+          </Text>
+        </View>
+      )}
+      {isAvailable&&jobs.map(job=>{
+        const isInstant=(job.bookingMode||'instant')==='instant';
+        const area=job.area||job.locality||(job.addr&&typeof job.addr==='string'?job.addr.split(',').slice(-2,-1)[0]?.trim():'')||job.city||'Visakhapatnam';
+        const svc=(job.items&&job.items[0]?.name)||job.serviceType||'Service';
+        const accepting=acceptingJobId===job.id;
+        return(
+          <View key={job.id} style={[S.card,{marginBottom:12,borderColor:C.greenBd,borderWidth:1}]}>
+            <Text style={{color:C.text,fontWeight:'800',fontSize:16}}>{svc}</Text>
+            <Text style={{color:C.text2,fontSize:12,marginTop:6}}>📍 {area}</Text>
+            <Text style={{color:isInstant?C.orange:C.text2,fontSize:12,marginTop:4,fontWeight:isInstant?'700':'500'}}>
+              {isInstant?'⚡ Now (instant)':`📅 ${job.scheduledDate||job.slot||''} ${job.scheduledTime||''}`}
+            </Text>
+            <TouchableOpacity
+              disabled={accepting||acceptingJobId!==null}
+              onPress={()=>acceptJob(job)}
+              style={{backgroundColor:accepting?C.muted:C.green,padding:14,borderRadius:12,marginTop:14,alignItems:'center',flexDirection:'row',justifyContent:'center',gap:8,opacity:accepting||acceptingJobId!==null?0.7:1}}>
+              {accepting&&<ActivityIndicator color="#fff" size="small"/>}
+              <Text style={{color:'#fff',fontWeight:'800',fontSize:15}}>
+                {accepting?'Accepting...':'✅ ACCEPT JOB'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+      <View style={{height:100}}/>
+    </ScrollView>
+  );
+
   // JOBS LIST
   const JobsTab=({jobs,emptyMsg})=>(
     <ScrollView style={{flex:1,padding:16}}
@@ -879,6 +991,7 @@ export default function App() {
 
   // TABS
   const TABS=[
+    {id:'available',icon:'🔔',label:'Available',badge:availableJobs.length},
     {id:'today',   icon:'📅',label:'Today',  badge:todayJobs.filter(j=>j.status!=='completed').length},
     {id:'active',  icon:'⚡',label:'Active', badge:activeJobs.length},
     {id:'done',    icon:'✅',label:'Done',   badge:0},
@@ -904,6 +1017,7 @@ export default function App() {
           </View>
         </View>
         <View style={{flex:1}}>
+          {tab==='available'&&<AvailableJobsTab jobs={availableJobs} isAvailable={isAvailable} acceptJob={acceptJob} acceptingJobId={acceptingJobId}/>}
           {tab==='today'   &&<JobsTab jobs={todayJobs} emptyMsg="No jobs today — rest well! 🪷"/>}
           {tab==='active'  &&<JobsTab jobs={activeJobs} emptyMsg="No active jobs right now"/>}
           {tab==='done'    &&<JobsTab jobs={completedJobs} emptyMsg="No completed jobs yet"/>}
