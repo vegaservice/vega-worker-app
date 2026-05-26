@@ -64,6 +64,80 @@ const fbUpdate=async(col,id,data)=>{
   catch(e){ console.error('fbUpdate:',e); return false; }
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// 🐛 BUG REPORT — floating button + modal, OTA-deployable
+// Writes to Firestore `bug_reports` collection. Visible to admin in Console.
+// ─────────────────────────────────────────────────────────────────────
+const submitBugReportWorker = async (context, description, severity) => {
+  try {
+    await firestore().collection('bug_reports').add({
+      app: 'worker',
+      description: (description || '').trim(),
+      severity: severity || 'normal',
+      reportedAt: firestore.FieldValue.serverTimestamp(),
+      ...context,
+      status: 'open',
+      device: { os: Platform.OS, version: Platform.Version },
+    });
+    return true;
+  } catch (e) { console.log('bug report:', e.message); return false; }
+};
+
+const BugFAB = ({ onPress }) => (
+  <TouchableOpacity onPress={onPress}
+    style={{ position:'absolute', bottom:72, right:14, width:42, height:42, borderRadius:21,
+      backgroundColor:'rgba(232,82,10,0.9)', alignItems:'center', justifyContent:'center',
+      shadowColor:'#000', shadowOffset:{width:0,height:4}, shadowOpacity:0.4, shadowRadius:8, elevation:8, zIndex:999 }}>
+    <Text style={{ fontSize:18 }}>🐛</Text>
+  </TouchableOpacity>
+);
+
+const BugModal = ({ visible, onClose, context, onSent }) => {
+  const [desc, setDesc] = React.useState('');
+  const [sev, setSev]   = React.useState('normal');
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { if (!visible) { setDesc(''); setSev('normal'); setBusy(false); } }, [visible]);
+  const send = async () => {
+    if (desc.trim().length < 5) { Alert.alert('Need a description', 'At least 5 characters please'); return; }
+    setBusy(true);
+    const ok = await submitBugReportWorker(context, desc, sev);
+    setBusy(false);
+    if (ok) { Alert.alert('🐛 Bug Report Sent', 'Thank you! Our team will look into it.'); onSent && onSent(); onClose(); }
+    else Alert.alert('Failed', 'Check your internet and try again');
+  };
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'flex-end' }}>
+        <View style={{ backgroundColor:'#0A1A0E', borderTopLeftRadius:20, borderTopRightRadius:20, padding:20, paddingBottom:32 }}>
+          <Text style={{ fontSize:18, fontWeight:'700', color:'#EDF5EF', marginBottom:8 }}>🐛 Report a Bug</Text>
+          <Text style={{ fontSize:12, color:'#A8C8B0', marginBottom:12 }}>Auto-captures screen, user, job context.</Text>
+          <View style={{ flexDirection:'row', gap:8, marginBottom:12 }}>
+            {[{id:'low',label:'🟢 Minor'},{id:'normal',label:'🟠 Normal'},{id:'high',label:'🔴 Critical'}].map(s=>(
+              <TouchableOpacity key={s.id} onPress={()=>setSev(s.id)}
+                style={{ flex:1, paddingVertical:10, borderRadius:10, alignItems:'center',
+                  backgroundColor: sev===s.id ? '#1A4020' : '#0E2014', borderWidth:1, borderColor: sev===s.id ? '#22C55E' : '#1A3018' }}>
+                <Text style={{ fontSize:11, fontWeight:'700', color: sev===s.id ? '#22C55E' : '#A8C8B0' }}>{s.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput multiline value={desc} onChangeText={setDesc}
+            placeholder="What went wrong? e.g. Tapped Accept and the app crashed"
+            placeholderTextColor="#587060"
+            style={{ borderWidth:1, borderColor:'#1A3018', borderRadius:14, padding:12, color:'#EDF5EF', minHeight:100, textAlignVertical:'top', marginBottom:12 }}/>
+          <View style={{ flexDirection:'row', gap:10 }}>
+            <TouchableOpacity onPress={onClose} style={{ flex:1, padding:14, borderRadius:14, borderWidth:1, borderColor:'#1A3018', alignItems:'center' }}>
+              <Text style={{ color:'#A8C8B0', fontWeight:'600' }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={send} disabled={busy} style={{ flex:2, padding:14, borderRadius:14, backgroundColor:'#22C55E', alignItems:'center', opacity: busy?0.5:1 }}>
+              {busy ? <ActivityIndicator color="#FFF"/> : <Text style={{ color:'#FFF', fontWeight:'700' }}>Send Report</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function App() {
   const [screen,setScreen]=useState('splash');
   const [tab,setTab]=useState('today');
@@ -88,6 +162,7 @@ export default function App() {
   const [otpError,setOtpError]=useState('');
   const [availableJobs,setAvailableJobs]=useState([]);
   const [acceptingJobId,setAcceptingJobId]=useState(null);
+  const [showBugModal,setShowBugModal]=useState(false);
 
   const fadeAnim=useRef(new Animated.Value(0)).current;
 
@@ -1050,6 +1125,20 @@ export default function App() {
         </ScrollView>
       </SafeAreaView>
       <JobDetailModal/>
+      <BugFAB onPress={() => setShowBugModal(true)} />
+      <BugModal
+        visible={showBugModal}
+        onClose={() => setShowBugModal(false)}
+        context={{
+          currentScreen: screen,
+          currentTab: tab,
+          workerPhone: worker?.phone || null,
+          workerName: worker?.name || null,
+          workerId: worker?.id || null,
+          activeJobId: selJob?.id || null,
+          isAvailable,
+        }}
+      />
     </View>
   );
 }
