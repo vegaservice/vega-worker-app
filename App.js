@@ -303,6 +303,12 @@ export default function App() {
           serviceType:(data.items||[{name:'Service'}])[0]?.name||'Service',
           customerName:data.customerName||data.userName||'Customer',
           customerPhone:data.customerPhone||data.userPhone||'',
+          // SYNC FIX: also write `professional` so Customer App shows real worker
+          professional: {
+            id: worker.id, name: worker.name, phone: worker.phone || null,
+            rating: worker.ratingAvg || worker.rating || 4.8,
+            initial: (worker.name || 'V')[0], color: '#1E6B3A', badge: 'VEGA Pro',
+          },
         });
         const workerRef=firestore().collection('workers').doc(worker.id);
         txn.update(workerRef,{
